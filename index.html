@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Emoji Dungeon Crawler</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --tile-size: 32px;
+            --font-size: 24px;
+            --wall-color: #2c3e50;
+            --floor-color: #34495e;
+            --ui-bg: #1e272e;
+            --text-color: #ecf0f1;
+            --accent-color: #f1c40f;
+            --hp-color-high: #2ecc71;
+            --hp-color-medium: #f1c40f;
+            --hp-color-low: #e74c3c;
+            --mp-color: #3498db;
+            --xp-color: #9b59b6;
+            --danger-color: #c0392b;
+            --gold-color: #f1c40f;
+            --poison-color: #8e44ad;
+        }
+
+        body {
+            background-color: #000;
+            color: var(--text-color);
+            font-family: 'Roboto Mono', monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 8px;
+            box-sizing: border-box;
+            overflow: hidden;
+            font-size: 14px;
+        }
+
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        #game-board {
+            display: grid;
+            border: 4px solid var(--wall-color);
+            background-color: var(--floor-color);
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            position: relative;
+        }
+        
+        .shake-animation {
+            animation: shake 0.3s;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+        }
+        
+        .crit-shake {
+             animation: crit-shake 0.4s;
+        }
+        @keyframes crit-shake {
+            0%, 100% { transform: translate(0, 0) rotate(0); }
+            20% { transform: translate(-2px, 2px) rotate(-1deg); }
+            40% { transform: translate(2px, -2px) rotate(1deg); }
+            60% { transform: translate(-2px, 2px) rotate(0deg); }
+            80% { transform: translate(2px, -2px) rotate(1deg); }
+        }
+
+        .tile {
+            width: var(--tile-size);
+            height: var(--tile-size);
+            font-size: var(--font-size);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        
+        .tile.player {
+            z-index: 10;
+            animation: pulse-aura 2s infinite;
+            border-radius: 50%;
+        }
+
+        @keyframes pulse-aura {
+            0% { box-shadow: 0 0 5px 2px rgba(241, 196, 15, 0.7); }
+            50% { box-shadow: 0 0 15px 5px rgba(241, 196, 15, 0.3); }
+            100% { box-shadow: 0 0 5px 2px rgba(241, 196, 15, 0.7); }
+        }
+        
+        .flash-red {
+            animation: flash-red-sprite 0.3s;
+        }
+
+        @keyframes flash-red-sprite {
+            0%, 100% { filter: none; }
+            50% { filter: brightness(1.5) drop-shadow(0 0 5px var(--danger-color)); }
+        }
+
+        .wall {
+            background-color: var(--wall-color);
+        }
+        
+        .torch::after {
+            content: '🔥';
+            position: absolute;
+            top: -10px;
+            font-size: 14px;
+            animation: flicker 1.5s infinite alternate;
+            z-index: 1;
+        }
+
+        @keyframes flicker {
+            0% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.1); }
+            100% { opacity: 0.7; transform: scale(0.95); }
+        }
+
+        #ui-panel {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            background-color: var(--ui-bg);
+            padding: 12px;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 800px;
+            border: 2px solid #444;
+        }
+        
+        #stats, #inventory {
+            flex: 1;
+            min-width: 250px;
+            padding: 0 10px;
+        }
+
+        .stat-bar-container { margin-bottom: 8px; font-size: 12px; position: relative; }
+        .stat-bar { background-color: #444; border-radius: 5px; overflow: hidden; height: 16px; width: 100%; border: 1px solid #222; }
+        .stat-bar-fill { height: 100%; transition: width 0.3s ease; }
+        .stat-bar-text { position: absolute; top: 0; left: 0; right: 0; text-align: center; line-height: 16px; font-size: 10px; color: white; text-shadow: 1px 1px 1px #000; }
+        .hp-high { background-color: var(--hp-color-high); }
+        .hp-medium { background-color: var(--hp-color-medium); }
+        .hp-low { background-color: var(--hp-color-low); }
+        #mp-bar .stat-bar-fill { background-color: var(--mp-color); }
+        #xp-bar .stat-bar-fill { background-color: var(--xp-color); }
+
+        #log-container { background-color: var(--ui-bg); border-radius: 8px; padding: 12px; width: 100%; max-width: 800px; height: 100px; overflow-y: scroll; border: 2px solid #444; font-size: 12px; }
+        #log-container p { margin: 0 0 5px; }
+        #log-container p:first-child { color: var(--accent-color); }
+
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); justify-content: center; align-items: center; }
+        .modal-content { background-color: var(--ui-bg); padding: 20px; border: 2px solid var(--accent-color); border-radius: 8px; text-align: center; max-width: 90%; width: 500px; position: relative; }
+        .modal-content h2 { margin-top: 0; color: var(--accent-color); font-size: 18px; }
+        .modal-content button { background-color: var(--accent-color); color: var(--ui-bg); border: none; padding: 10px 15px; font-size: 14px; border-radius: 4px; cursor: pointer; margin-top: 20px; font-family: 'Roboto Mono', monospace; }
+        .modal-content button:hover { background-color: #ffdd59; }
+        
+        #class-selection-modal .class-card { border: 2px solid #555; padding: 15px; margin: 10px 0; cursor: pointer; transition: all 0.2s; }
+        #class-selection-modal .class-card:hover { border-color: var(--accent-color); background-color: #333; }
+        .class-card h3 { margin: 0 0 10px; font-size: 16px; }
+        .class-card .base-stats { font-size: 12px; color: #ccc; }
+        
+        #combat-modal #combat-ui { display: flex; justify-content: space-around; margin-top: 10px; flex-wrap: wrap; gap: 5px; }
+        #combat-modal button { margin: 0 5px; flex-grow: 1; }
+        #combat-flee { flex-grow: 0.5; background-color: #7f8c8d !important; }
+        #combat-info { display: flex; justify-content: space-between; align-items: flex-end; text-align: left; position: relative; overflow: hidden; height: 180px;}
+        .combatant-container { display: flex; flex-direction: column; align-items: center; position: absolute; bottom: 0; }
+        #combat-player-container { left: 10px; }
+        #combat-monster-container { right: 10px; }
+        .combatant-sprite { font-size: 48px; z-index: 1; transition: transform 0.2s ease-in-out; position: relative; }
+        .combatant-stats { padding: 10px; border: 1px solid #444; min-width: 150px; border-radius: 8px; background-color: var(--ui-bg);}
+        .combat-stat-bar { background-color: #444; height: 12px; border: 1px solid #222; margin-top: 5px; border-radius: 4px; overflow: hidden; position: relative; }
+        .combat-stat-bar-fill { height: 100%; transition: width 0.3s ease; }
+        .combat-message { position: absolute; top: 0; left: 50%; transform: translateX(-50%); color: var(--danger-color); font-size: 14px; animation: fade-out 2s forwards; text-shadow: 1px 1px #000; }
+        @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+        #battle-log {
+            height: 80px;
+            background-color: rgba(0,0,0,0.3);
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 8px;
+            margin-top: 10px;
+            overflow-y: scroll;
+            font-size: 10px;
+            text-align: left;
+        }
+        #battle-log p { margin: 0 0 4px; }
+        
+        /* Skill Animations */
+        #animation-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+        .skill-animation { position: absolute; }
+        .fireball { width: 30px; height: 30px; background: radial-gradient(circle, white, orange, red); border-radius: 50%; }
+        .explosion { width: 80px; height: 80px; background: radial-gradient(circle, rgba(255,255,255,0.8), rgba(255,165,0,0.5), transparent); border-radius: 50%; animation: explosion-effect 0.3s ease-out; }
+        @keyframes explosion-effect { from { transform: scale(0); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+        .heal-effect { font-size: 20px; color: var(--hp-color-high); animation: heal-float 1s ease-out; }
+        @keyframes heal-float { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-30px); opacity: 0; } }
+        .x-cut { width: 60px; height: 60px; }
+        .x-cut::before, .x-cut::after { content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 4px; background-color: white; animation: x-cut-anim 0.4s ease-out; }
+        .x-cut::before { transform: rotate(45deg); }
+        .x-cut::after { transform: rotate(-45deg); }
+        @keyframes x-cut-anim { from { width: 0; } to { width: 100%; } }
+        .stun-effect { font-size: 20px; animation: spin-and-fade 1s linear forwards; }
+        @keyframes spin-and-fade { 0% { transform: rotate(0deg) scale(1); opacity: 1; } 100% { transform: rotate(360deg) scale(0); opacity: 0; } }
+        .poison-bubbles { width: 10px; height: 10px; background-color: var(--poison-color); border-radius: 50%; animation: bubble-up 1s ease-in forwards; }
+        @keyframes bubble-up { from { transform: translateY(0) scale(1); opacity: 0.8; } to { transform: translateY(-40px) scale(0.5); opacity: 0; } }
+        
+        #town-modal .upgrade-btn { display: block; width: 100%; margin: 10px 0; text-align: left; padding: 15px; }
+        
+        #restart-button { background-color: var(--danger-color); color: white; border: none; padding: 5px 10px; cursor: pointer; font-size: 12px; margin-left: 10px; font-family: 'Roboto Mono', monospace; border-radius: 4px; }
+
+        #d-pad { display: none; position: fixed; bottom: 20px; left: 20px; width: 120px; height: 120px; z-index: 101; }
+        #d-pad button { position: absolute; width: 40px; height: 40px; background: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.5); color: white; font-size: 20px; border-radius: 8px; }
+        #d-pad-up { top: 0; left: 40px; }
+        #d-pad-down { bottom: 0; left: 40px; }
+        #d-pad-left { top: 40px; left: 0; }
+        #d-pad-right { top: 40px; right: 0; }
+        
+        /* Victory Screen */
+        #victory-modal .modal-content { border-color: gold; box-shadow: 0 0 30px gold; }
+        #fireworks-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; }
+        .firework { position: absolute; width: 4px; height: 4px; background: white; border-radius: 50%; animation: firework-fly 1s ease-out forwards; }
+        @keyframes firework-fly { to { transform: translateY(-200px); opacity: 0; } }
+        .explosion-particle { position: absolute; width: 3px; height: 3px; border-radius: 50%; animation: explode 0.8s ease-out forwards; }
+        @keyframes explode { from { transform: scale(1); opacity: 1; } to { transform: scale(0); opacity: 0; } }
+        
+        .floating-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--accent-color); font-size: 16px; animation: float-up 1.5s ease-out forwards; pointer-events: none; }
+        @keyframes float-up { from { transform: translate(-50%, -50%) scale(1); opacity: 1; } to { transform: translate(-50%, -150%) scale(1.2); opacity: 0; } }
+
+        #level-up-modal ul { list-style: none; padding: 0; text-align: left; }
+        #level-up-modal li { margin-bottom: 5px; }
+
+        @media (max-width: 768px) {
+            body { padding: 8px; font-size: 12px; }
+            :root { --tile-size: 28px; --font-size: 20px; }
+            #ui-panel { flex-direction: column; gap: 16px; }
+            #d-pad { display: block; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="game-board"></div>
+        <div id="ui-panel">
+             <div id="stats">
+                <div>Class:<span id="class-name"></span> | Lvl:<span id="level">1</span> | Dun Lvl:<span id="dungeon-level">1</span></div>
+                <div class="stat-bar-container" id="hp-bar"><span>HP</span><div class="stat-bar"><div class="stat-bar-fill" id="hp-fill"></div></div><div id="hp-text" class="stat-bar-text"></div></div>
+                <div class="stat-bar-container" id="mp-bar"><span>MP</span><div class="stat-bar"><div class="stat-bar-fill" id="mp-fill"></div></div><div id="mp-text" class="stat-bar-text"></div></div>
+                <div class="stat-bar-container" id="xp-bar"><span>XP</span><div class="stat-bar"><div class="stat-bar-fill" id="xp-fill"></div></div><div id="xp-text" class="stat-bar-text"></div></div>
+            </div>
+            <div id="inventory">
+                <div>Atk:<span id="attack">0</span> | Def:<span id="defense">0</span></div>
+                <div>Gold:<span id="gold">0</span><button id="restart-button">Restart</button></div>
+                <div>
+                    <button id="use-hp-potion-btn" style="padding: 2px 5px; font-size: 10px;"></button>
+                    <button id="use-mp-potion-btn" style="padding: 2px 5px; font-size: 10px;"></button>
+                </div>
+            </div>
+        </div>
+        <div id="log-container"></div>
+    </div>
+    
+    <div id="d-pad">
+        <button id="d-pad-up">▲</button>
+        <button id="d-pad-down">▼</button>
+        <button id="d-pad-left">◀</button>
+        <button id="d-pad-right">▶</button>
+    </div>
+
+    <div id="class-selection-modal" class="modal" style="display: flex;">
+        <div class="modal-content">
+            <h2>Choose your Class</h2>
+            <div id="class-options"></div>
+        </div>
+    </div>
+    
+    <div id="combat-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="combat-title"></h2>
+            <div id="combat-info">
+                <div id="animation-layer"></div>
+                <div id="combat-player-container" class="combatant-container"></div>
+                <div id="combat-monster-container" class="combatant-container"></div>
+            </div>
+            <div id="battle-log"></div>
+            <div id="combat-ui">
+                <button id="combat-attack">Attack</button>
+                <button id="combat-skill">Skill</button>
+                <button id="combat-potion">HP Potion</button>
+                <button id="combat-mp-potion">MP Potion</button>
+                <button id="combat-flee">Flee</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="town-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="town-title">Game Over</h2>
+            <p id="town-text"></p>
+            <p>You have <strong id="town-gold" style="color: var(--gold-color);">0</strong> gold to spend.</p>
+            <div id="town-upgrades"></div>
+            <button id="town-restart-button">New Adventure</button>
+        </div>
+    </div>
+    
+    <div id="confirm-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="confirm-title">Are you sure?</h2>
+            <p id="confirm-text"></p>
+            <button id="confirm-yes-button">Yes</button>
+            <button id="confirm-no-button" style="background-color: #7f8c8d;">No</button>
+        </div>
+    </div>
+    
+    <div id="shop-modal" class="modal">
+        <div class="modal-content">
+            <h2>Shop</h2>
+            <p>Welcome! What would you like to buy?</p>
+            <div id="shop-items"></div>
+            <button id="shop-close-button">Leave</button>
+        </div>
+    </div>
+    
+    <div id="victory-modal" class="modal">
+        <div class="modal-content">
+            <div id="fireworks-container"></div>
+            <h2>VICTORY!</h2>
+            <p>You have defeated the Ancient Dragon and saved the dungeon!</p>
+            <button id="victory-return-btn">Back to Title</button>
+        </div>
+    </div>
+
+    <div id="level-up-modal" class="modal">
+        <div class="modal-content">
+            <h2>LEVEL UP!</h2>
+            <ul id="level-up-stats"></ul>
+            <button id="level-up-ok-btn">Awesome!</button>
+        </div>
+    </div>
+
+    <script>
+        // --- GAME CONFIG ---
+        const BOARD_WIDTH = 25;
+        const BOARD_HEIGHT = 15;
+        const MAX_DUNGEON_LEVEL = 6;
+        const MONSTER_SIGHT_RANGE = 5;
+
+        const EMOJI = {
+            WALL: '🧱', FLOOR: ' ', DOOR: '🚪',
+            WARRIOR: '🪓', MAGE: '🧙', ROGUE: '🗡️',
+            GOBLIN: '👺', SKELETON: '💀', ZOMBIE: '🧟', SPIDER: '🕷️', ORC: '👹', BOSS: '🐲',
+            WEAPON: '⚔️', ARMOR: '🛡️', POTION: '🧪', MP_POTION: '💧', GOLD: '💰', SCROLL: '📜',
+            SHOP: '🛍️', DECORATION: ['🏺', '⚰️', '🗿']
+        };
+
+        const CLASSES = {
+            Warrior: { emoji: EMOJI.WARRIOR, hp: 40, mp: 10, attack: 7, defense: 3, critChance: 0.05, skill: {name: "Bash", cost: 4, effect: "damage_stun", multiplier: 1.2, anim: 'stun'} },
+            Mage: { emoji: EMOJI.MAGE, hp: 25, mp: 20, attack: 3, defense: 1, critChance: 0.05, skill: {name: "Fireball", cost: 5, effect: "damage", multiplier: 2.5, anim: 'fireball'} },
+            Rogue: { emoji: EMOJI.ROGUE, hp: 30, mp: 15, attack: 5, defense: 2, critChance: 0.20, skill: {name: "X-Cut", cost: 6, effect: "damage", multiplier: 2.0, anim: 'x-cut'} }
+        };
+        
+        const MONSTERS = {
+            [EMOJI.GOBLIN]: { name: "Goblin", hp: 15, mp: 0, attack: 5, defense: 1, xp: 10, gold: 5, critChance: 0.05 },
+            [EMOJI.SKELETON]: { name: "Skeleton", hp: 20, mp: 10, attack: 7, defense: 2, xp: 15, gold: 8, critChance: 0.05, skill: { name: "Bone Strike", cost: 4, multiplier: 1.5, effect: "damage" } },
+            [EMOJI.ZOMBIE]: { name: "Zombie", hp: 30, mp: 0, attack: 6, defense: 3, xp: 20, gold: 10, critChance: 0.05 },
+            [EMOJI.SPIDER]: { name: "Giant Spider", hp: 18, mp: 10, attack: 8, defense: 1, xp: 18, gold: 12, critChance: 0.05, skill: { name: "Poison Bite", cost: 5, effect: "poison", duration: 3, damage: 3 } },
+            [EMOJI.ORC]: { name: "Orc", hp: 40, mp: 8, attack: 10, defense: 4, xp: 30, gold: 20, critChance: 0.1, skill: { name: "True Strike", cost: 6, effect: "true_damage", multiplier: 1.2 } },
+            [EMOJI.BOSS]: { name: "Ancient Dragon", hp: 250, mp: 50, attack: 25, defense: 15, xp: 500, gold: 1000, size: 2, critChance: 0.15, skills: [
+                { name: "Fire Breath", cost: 10, effect: "damage", multiplier: 1.8, anim: 'fireball' },
+                { name: "Tail Swipe", cost: 8, effect: "stun", anim: 'lunge' },
+                { name: "Terrifying Roar", cost: 12, effect: "debuff", stat: "defense", amount: -2, duration: 3 }
+            ] }
+        };
+
+        // --- DOM ELEMENTS ---
+        const combatModalContent = document.querySelector('#combat-modal .modal-content');
+        const gameBoard = document.getElementById('game-board');
+        const logContainer = document.getElementById('log-container');
+        const battleLogContainer = document.getElementById('battle-log');
+        const classSelectionModal = document.getElementById('class-selection-modal');
+        const townModal = document.getElementById('town-modal');
+        const confirmModal = document.getElementById('confirm-modal');
+        const shopModal = document.getElementById('shop-modal');
+        const victoryModal = document.getElementById('victory-modal');
+        const levelUpModal = document.getElementById('level-up-modal');
+
+        // --- GAME STATE ---
+        let gameState = {};
+        let permanentUpgrades = { hp: 0, attack: 0, defense: 0, gold: 0 };
+        
+        // --- INITIALIZATION ---
+        function initGame() {
+            showClassSelection();
+        }
+
+        function showClassSelection() {
+            const classOptions = document.getElementById('class-options');
+            classOptions.innerHTML = '';
+            for (const className in CLASSES) {
+                const classData = CLASSES[className];
+                const card = document.createElement('div');
+                card.className = 'class-card';
+                card.innerHTML = `<h3>${classData.emoji} ${className}</h3>
+                    <p class="base-stats">HP:${classData.hp} MP:${classData.mp} Atk:${classData.attack} Def:${classData.defense}</p>`;
+                card.onclick = () => startGame(className);
+                classOptions.appendChild(card);
+            }
+            classSelectionModal.style.display = 'flex';
+        }
+
+        function startGame(playerClass) {
+            classSelectionModal.style.display = 'none';
+            const classData = CLASSES[playerClass];
+            gameState = {
+                gameStatus: 'exploring',
+                player: {
+                    class: playerClass,
+                    emoji: classData.emoji,
+                    x: 0, y: 0,
+                    level: 1,
+                    hp: classData.hp + permanentUpgrades.hp,
+                    maxHp: classData.hp + permanentUpgrades.hp,
+                    mp: classData.mp,
+                    maxMp: classData.mp,
+                    attack: classData.attack + permanentUpgrades.attack,
+                    defense: classData.defense + permanentUpgrades.defense,
+                    critChance: classData.critChance,
+                    xp: 0, xpToNextLevel: 20,
+                    potions: 1, mpPotions: 0, gold: 0,
+                    statusEffects: []
+                },
+                dungeonLevel: 1,
+                map: [],
+                entities: [],
+                currentCombat: null,
+            };
+            logContainer.innerHTML = '';
+            logMessage(`Welcome, ${playerClass}! Use potion buttons or (H)/(M) keys.`, 'system');
+            generateLevel();
+            updateUI();
+        }
+        
+        // --- MAP GENERATION (with Pathfinding Check) ---
+        function pathExists(map, startX, startY, endX, endY) {
+            const queue = [[startX, startY]];
+            const visited = new Set([`${startX},${startY}`]);
+            const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+            while (queue.length > 0) {
+                const [x, y] = queue.shift();
+                if (x === endX && y === endY) return true;
+                for (const [dx, dy] of directions) {
+                    const newX = x + dx;
+                    const newY = y + dy;
+                    const key = `${newX},${newY}`;
+                    if (newX >= 0 && newX < BOARD_WIDTH && newY >= 0 && newY < BOARD_HEIGHT &&
+                        map[newY][newX] === EMOJI.FLOOR && !visited.has(key)) {
+                        visited.add(key);
+                        queue.push([newX, newY]);
+                    }
+                }
+            }
+            return false;
+        }
+
+        function generateLevel() {
+            let map, floorTiles, playerPos, doorPos;
+            let attempts = 0;
+            let isValidMap = false;
+
+            while (!isValidMap && attempts < 50) {
+                attempts++;
+                map = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(EMOJI.WALL));
+                floorTiles = [];
+                const diggers = [{ x: Math.floor(BOARD_WIDTH / 2), y: Math.floor(BOARD_HEIGHT / 2) }];
+                const targetFloorCount = BOARD_WIDTH * BOARD_HEIGHT * 0.4;
+                const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+                while (floorTiles.length < targetFloorCount) {
+                    const digger = diggers[Math.floor(Math.random() * diggers.length)];
+                    const [dx, dy] = directions[Math.floor(Math.random() * 4)];
+                    digger.x = Math.max(1, Math.min(BOARD_WIDTH - 2, digger.x + dx));
+                    digger.y = Math.max(1, Math.min(BOARD_HEIGHT - 2, digger.y + dy));
+                    if (map[digger.y][digger.x] === EMOJI.WALL) {
+                        map[digger.y][digger.x] = EMOJI.FLOOR;
+                        floorTiles.push({ x: digger.x, y: digger.y });
+                        if (Math.random() > 0.5 && diggers.length < 5) {
+                            diggers.push({ ...digger });
+                        }
+                    }
+                }
+                if (floorTiles.length < 20) continue;
+                playerPos = floorTiles[Math.floor(Math.random() * floorTiles.length)];
+                if (gameState.dungeonLevel < MAX_DUNGEON_LEVEL) {
+                    doorPos = floorTiles[Math.floor(Math.random() * floorTiles.length)];
+                    const dist = Math.abs(playerPos.x - doorPos.x) + Math.abs(playerPos.y - doorPos.y);
+                    if (dist > (BOARD_WIDTH + BOARD_HEIGHT) / 3) {
+                        if (pathExists(map, playerPos.x, playerPos.y, doorPos.x, doorPos.y)) {
+                            isValidMap = true;
+                        }
+                    }
+                } else {
+                    isValidMap = true; // No door needed on boss level
+                }
+            }
+            
+            gameState.map = map;
+            gameState.entities = [];
+            gameState.player.x = playerPos.x;
+            gameState.player.y = playerPos.y;
+            let occupied = [`${playerPos.x},${playerPos.y}`];
+            
+            const getValidPos = (size = 1) => {
+                let pos;
+                let isValid = false;
+                let attempts = 0;
+                while(!isValid && attempts < 100) {
+                    attempts++;
+                    pos = floorTiles[Math.floor(Math.random() * floorTiles.length)];
+                    if (!pos || occupied.some(p => {
+                        const [px, py] = p.split(',').map(Number);
+                        return Math.abs(px - pos.x) < size && Math.abs(py - pos.y) < size;
+                    })) continue;
+                    
+                    if (size > 1) {
+                        isValid = true;
+                        for (let i = 0; i < size; i++) {
+                            for (let j = 0; j < size; j++) {
+                                if (pos.x + i >= BOARD_WIDTH || pos.y + j >= BOARD_HEIGHT || 
+                                    map[pos.y + j][pos.x + i] !== EMOJI.FLOOR) {
+                                    isValid = false;
+                                    break;
+                                }
+                            }
+                            if (!isValid) break;
+                        }
+                    } else {
+                        isValid = true;
+                    }
+                }
+                if (!isValid) return null;
+
+                for (let i = 0; i < size; i++) {
+                    for (let j = 0; j < size; j++) {
+                         occupied.push(`${pos.x+i},${pos.y+j}`);
+                    }
+                }
+                return pos;
+            };
+            
+            if (doorPos) {
+                gameState.entities.push({ x: doorPos.x, y: doorPos.y, type: EMOJI.DOOR });
+                occupied.push(`${doorPos.x},${doorPos.y}`);
+            }
+            
+            const placeEntity = (entity) => {
+                const pos = getValidPos(entity.size || 1);
+                if (pos) {
+                    gameState.entities.push({ x: pos.x, y: pos.y, ...entity });
+                }
+            };
+            
+            if (gameState.dungeonLevel === MAX_DUNGEON_LEVEL) {
+                 const base = MONSTERS[EMOJI.BOSS];
+                 placeEntity({ type: EMOJI.BOSS, ...base, hp: base.hp, maxHp: base.hp, mp: base.mp });
+                 logMessage("You feel a terrifying presence...", 'danger');
+            } else {
+                const monsterCount = Math.floor(floorTiles.length * 0.08) + 1;
+                const monsterTypes = [EMOJI.GOBLIN, EMOJI.SKELETON, EMOJI.ZOMBIE, EMOJI.SPIDER, EMOJI.ORC];
+                for (let i = 0; i < monsterCount; i++) {
+                    const type = monsterTypes[Math.min(monsterTypes.length - 1, Math.floor(Math.random() * gameState.dungeonLevel))];
+                    const base = MONSTERS[type];
+                    const levelBonus = gameState.dungeonLevel;
+                    placeEntity({ 
+                        type, 
+                        ...base, 
+                        hp: base.hp + levelBonus * 5, 
+                        maxHp: base.hp + levelBonus * 5,
+                        attack: base.attack + Math.floor(levelBonus * 1.5),
+                        defense: base.defense + Math.floor(levelBonus / 1.5),
+                        mp: base.mp 
+                    });
+                }
+            }
+            
+            let scrollCount = 0, hpPotionCount = 0, mpPotionCount = 0;
+            const itemCount = Math.floor(floorTiles.length * 0.1);
+            for (let i = 0; i < itemCount; i++) {
+                const rand = Math.random();
+                if (rand < 0.25) placeEntity({ type: EMOJI.GOLD, value: (Math.floor(Math.random() * 5) + 1) * gameState.dungeonLevel });
+                else if (rand < 0.5 && hpPotionCount < 3) { placeEntity({ type: EMOJI.POTION }); hpPotionCount++; }
+                else if (rand < 0.65 && mpPotionCount < 3) { placeEntity({ type: EMOJI.MP_POTION }); mpPotionCount++; }
+                else if (rand < 0.8) placeEntity({ type: EMOJI.WEAPON, value: 1 });
+                else if (rand < 0.95) placeEntity({ type: EMOJI.ARMOR, value: 1 });
+                else if (scrollCount < 2) { placeEntity({ type: EMOJI.SCROLL }); scrollCount++; }
+            }
+            
+            const decorCount = Math.floor(Math.random() * 3) + 1;
+            for (let i = 0; i < decorCount; i++) {
+                let placed = false;
+                let attempts = 0;
+                while(!placed && attempts < 50) {
+                    attempts++;
+                    const x = Math.floor(Math.random() * (BOARD_WIDTH - 2)) + 1;
+                    const y = Math.floor(Math.random() * (BOARD_HEIGHT - 2)) + 1;
+                    if (map[y][x] !== EMOJI.FLOOR) continue;
+                    
+                    let isSurrounded = true;
+                    for(let dx = -1; dx <= 1; dx++) {
+                        for(let dy = -1; dy <= 1; dy++) {
+                           if (dx === 0 && dy === 0) continue;
+                           if (map[y+dy][x+dx] !== EMOJI.WALL) {
+                               isSurrounded = false;
+                               break;
+                           }
+                        }
+                        if(!isSurrounded) break;
+                    }
+                    if(isSurrounded) {
+                        map[y][x] = EMOJI.DECORATION[Math.floor(Math.random() * EMOJI.DECORATION.length)];
+                        placed = true;
+                    }
+                }
+            }
+
+            if (Math.random() < 0.3) placeEntity({ type: EMOJI.SHOP });
+            if (Math.random() < 0.2) placeEntity({ type: EMOJI.NPC });
+            renderBoard();
+        }
+
+        // --- RENDER & UI ---
+        function renderBoard() {
+            if (!gameState || gameState.gameStatus === 'town') return;
+            gameBoard.innerHTML = '';
+            gameBoard.style.gridTemplateColumns = `repeat(${BOARD_WIDTH}, 1fr)`;
+            const renderedTiles = new Set();
+
+            for (let y = 0; y < BOARD_HEIGHT; y++) {
+                for (let x = 0; x < BOARD_WIDTH; x++) {
+                    if(renderedTiles.has(`${x},${y}`)) continue;
+
+                    const tile = document.createElement('div');
+                    tile.classList.add('tile');
+                    let content = gameState.map[y][x];
+                    if (content === EMOJI.WALL) {
+                        tile.classList.add('wall');
+                        if ((x * 3 + y * 5) % 29 === 0) tile.classList.add('torch');
+                    }
+                    const entity = gameState.entities.find(e => x === e.x && y === e.y);
+
+                    if (entity) {
+                        content = entity.type;
+                        if (entity.size > 1) {
+                            tile.style.gridColumn = `span ${entity.size}`;
+                            tile.style.gridRow = `span ${entity.size}`;
+                            tile.style.fontSize = `calc(var(--font-size) * ${entity.size} * 0.8)`;
+                            tile.style.zIndex = '5';
+                            tile.style.lineHeight = `calc(var(--tile-size) * ${entity.size} * 0.9)`;
+                            for(let i = 0; i < entity.size; i++) {
+                                for(let j = 0; j < entity.size; j++) {
+                                    if(i === 0 && j === 0) continue;
+                                    renderedTiles.add(`${x+i},${y+j}`);
+                                }
+                            }
+                        }
+                    }
+
+                    if (gameState.player && gameState.player.x === x && gameState.player.y === y) {
+                        content = gameState.player.emoji;
+                        tile.classList.add('player');
+                    }
+                    tile.textContent = content;
+                    gameBoard.appendChild(tile);
+                }
+            }
+        }
+        
+        function updateUI() {
+            if (!gameState.player) return;
+            const p = gameState.player;
+            document.getElementById('class-name').textContent = ` ${p.class}`;
+            document.getElementById('level').textContent = ` ${p.level}`;
+            document.getElementById('dungeon-level').textContent = ` ${gameState.dungeonLevel}`;
+            
+            const hpFill = document.getElementById('hp-fill');
+            const hpPercent = p.hp / p.maxHp;
+            hpFill.style.width = `${hpPercent * 100}%`;
+            hpFill.className = 'stat-bar-fill';
+            if (hpPercent <= 0.3) hpFill.classList.add('hp-low');
+            else if (hpPercent <= 0.6) hpFill.classList.add('hp-medium');
+            else hpFill.classList.add('hp-high');
+            document.getElementById('hp-text').textContent = `${p.hp}/${p.maxHp}`;
+            
+            const mpFill = document.getElementById('mp-fill');
+            mpFill.style.width = `${(p.mp / p.maxMp) * 100}%`;
+            document.getElementById('mp-text').textContent = `${p.mp}/${p.maxMp}`;
+
+            const xpFill = document.getElementById('xp-fill');
+            xpFill.style.width = `${(p.xp / p.xpToNextLevel) * 100}%`;
+            document.getElementById('xp-text').textContent = `${p.xp}/${p.xpToNextLevel}`;
+
+            document.getElementById('attack').textContent = ` ${p.attack}`;
+            document.getElementById('defense').textContent = ` ${p.defense}`;
+            document.getElementById('gold').textContent = ` ${p.gold}`;
+            
+            document.getElementById('use-hp-potion-btn').textContent = `HP 🧪(${p.potions})`;
+            document.getElementById('use-mp-potion-btn').textContent = `MP 💧(${p.mpPotions})`;
+        }
+
+        function logMessage(message, type = 'normal') {
+            const p = document.createElement('p');
+            p.textContent = `> ${message}`;
+            if (type === 'system') p.style.color = 'var(--accent-color)';
+            if (type === 'combat') p.style.color = '#ff9800';
+            if (type === 'item') p.style.color = '#2ecc71';
+            if (type === 'danger') p.style.color = 'var(--danger-color)';
+            logContainer.prepend(p);
+            if (logContainer.children.length > 20) logContainer.lastChild.remove();
+        }
+
+        function logBattleMessage(message, type = 'normal') {
+            const p = document.createElement('p');
+            p.textContent = `> ${message}`;
+            if (type === 'system') p.style.color = 'var(--accent-color)';
+            if (type === 'combat') p.style.color = '#ff9800';
+            if (type === 'item') p.style.color = '#2ecc71';
+            if (type === 'danger') p.style.color = 'var(--danger-color)';
+            battleLogContainer.prepend(p);
+            if (battleLogContainer.children.length > 10) battleLogContainer.lastChild.remove();
+        }
+
+        // --- GAME LOGIC ---
+        function playerTurn(dx, dy) {
+            if (gameState.gameStatus !== 'exploring') return;
+            const moved = movePlayer(dx, dy);
+            if (moved) {
+                if (gameState.gameStatus === 'exploring') moveMonsters();
+            }
+            renderBoard();
+            updateUI();
+        }
+
+        function movePlayer(dx, dy) {
+            const newX = gameState.player.x + dx;
+            const newY = gameState.player.y + dy;
+            if (newX < 0 || newX >= BOARD_WIDTH || newY < 0 || newY >= BOARD_HEIGHT || EMOJI.DECORATION.includes(gameState.map[newY][newX]) || gameState.map[newY][newX] === EMOJI.WALL) {
+                return false;
+            }
+            const entity = gameState.entities.find(e => {
+                const size = e.size || 1;
+                return newX >= e.x && newX < e.x + size && newY >= e.y && newY < e.y + size;
+            });
+            if (entity) {
+                handleTileInteraction(entity);
+                return false; 
+            }
+            gameState.player.x = newX;
+            gameState.player.y = newY;
+            return true;
+        }
+
+        function moveMonsters() {
+            const monsters = gameState.entities.filter(e => MONSTERS[e.type]);
+            monsters.forEach(monster => {
+                if (gameState.gameStatus !== 'exploring') return;
+                const size = monster.size || 1;
+                const dist = Math.max(Math.abs(monster.x - gameState.player.x), Math.abs(monster.y - gameState.player.y));
+                if (dist < size + 1) {
+                    startCombat(monster);
+                } else if (dist <= MONSTER_SIGHT_RANGE) {
+                    let dx = Math.sign(gameState.player.x - monster.x);
+                    let dy = Math.sign(gameState.player.y - monster.y);
+                    if (dx !== 0 && dy !== 0) {
+                        if (Math.random() < 0.5) dx = 0; else dy = 0;
+                    }
+                    const newX = monster.x + dx;
+                    const newY = monster.y + dy;
+                    let canMove = true;
+                    for(let i = 0; i < size; i++) {
+                        for(let j = 0; j < size; j++) {
+                            const checkX = newX + i;
+                            const checkY = newY + j;
+                             const isOccupied = gameState.entities.some(e => e !== monster && checkX >= e.x && checkX < e.x + (e.size || 1) && checkY >= e.y && checkY < e.y + (e.size || 1)) || (gameState.player.x === checkX && gameState.player.y === checkY);
+                            if (gameState.map[checkY][checkX] !== EMOJI.FLOOR || isOccupied) {
+                                canMove = false;
+                                break;
+                            }
+                        }
+                        if(!canMove) break;
+                    }
+                    if (canMove) {
+                        monster.x = newX;
+                        monster.y = newY;
+                    }
+                }
+            });
+        }
+        
+        function handleTileInteraction(entity) {
+            const entityIndex = gameState.entities.findIndex(e => e === entity);
+            if (entityIndex === -1 && entity.type !== EMOJI.SHOP) return;
+            if (MONSTERS[entity.type]) {
+                startCombat(entity);
+            } else {
+                pickupItem(entity, entityIndex);
+            }
+        }
+
+        function pickupItem(item, index) {
+            const p = gameState.player;
+            switch (item.type) {
+                case EMOJI.DOOR: nextLevel(); return;
+                case EMOJI.SHOP: openShop(); return;
+                case EMOJI.GOLD: p.gold += item.value; logMessage(`You found ${item.value} gold!`, 'item'); break;
+                case EMOJI.WEAPON: p.attack += item.value; logMessage(`Found a weapon! Atk +${item.value}.`, 'item'); break;
+                case EMOJI.ARMOR: p.defense += item.value; logMessage(`Found armor! Def +${item.value}.`, 'item'); break;
+                case EMOJI.POTION: p.potions++; logMessage(`Picked up a HP Potion.`, 'item'); break;
+                case EMOJI.MP_POTION: p.mpPotions++; logMessage(`Picked up an MP Potion.`, 'item'); break;
+                case EMOJI.SCROLL:
+                    logMessage('The scroll erupts in arcane energy!', 'system');
+                    gameState.entities.filter(e => MONSTERS[e.type]).forEach(monster => {
+                        const damage = 10;
+                        monster.hp = Math.max(1, monster.hp - damage);
+                        logMessage(`The energy blasts ${monster.name} for ${damage} damage!`, 'danger');
+                    });
+                    renderBoard();
+                    break;
+                case EMOJI.NPC: 
+                    logMessage(`An old man gives you a potion and vanishes.`, 'system'); 
+                    p.potions++; 
+                    break;
+            }
+            if (item.type !== EMOJI.NPC) {
+                gameState.entities.splice(index, 1);
+            }
+            updateUI();
+        }
+        
+        // --- COMBAT ---
+        const sleep = ms => new Promise(res => setTimeout(res, ms));
+
+        function startCombat(monster) {
+            gameState.gameStatus = 'combat';
+            gameState.currentCombat = { monster, turn: 'player' };
+            battleLogContainer.innerHTML = '';
+            document.getElementById('combat-modal').style.display = 'flex';
+            updateCombatUI();
+        }
+        
+        function updateCombatUI() {
+            if (!gameState.currentCombat) return;
+            const { monster } = gameState.currentCombat;
+            const player = gameState.player;
+            document.getElementById('combat-title').textContent = `Combat!`;
+            
+            const playerContainer = document.getElementById('combat-player-container');
+            const playerHpPercent = player.hp / player.maxHp;
+            const playerHpColorClass = playerHpPercent <= 0.3 ? 'hp-low' : playerHpPercent <= 0.6 ? 'hp-medium' : 'hp-high';
+            playerContainer.innerHTML = `<div class="combatant-sprite" id="player-sprite">${player.emoji}</div>
+                <div class="combatant-stats">
+                    <h3>${player.class}</h3>
+                    <div class="combat-stat-bar"><div class="combat-stat-bar-fill ${playerHpColorClass}" style="width: ${playerHpPercent * 100}%"></div><div class="stat-bar-text">${player.hp}/${player.maxHp}</div></div>
+                    <div class="combat-stat-bar"><div class="combat-stat-bar-fill" style="width: ${(player.mp / player.maxMp) * 100}%; background-color: var(--mp-color);"></div><div class="stat-bar-text">${player.mp}/${player.maxMp}</div></div>
+                </div>`;
+
+            const monsterContainer = document.getElementById('combat-monster-container');
+            const monsterHpPercent = monster.hp / monster.maxHp;
+            monsterContainer.innerHTML = `<div class="combatant-sprite" id="monster-sprite">${monster.type}</div>
+                <div class="combatant-stats">
+                    <h3>${monster.name}</h3>
+                    <div class="combat-stat-bar"><div class="combat-stat-bar-fill hp-high" style="width: ${monsterHpPercent * 100}%"></div><div class="stat-bar-text">${monster.hp}/${monster.maxHp}</div></div>
+                </div>`;
+            
+            document.getElementById('combat-potion').textContent = `HP Potion (${player.potions})`;
+            document.getElementById('combat-mp-potion').textContent = `MP Potion (${player.mpPotions})`;
+        }
+        
+        async function handleCombatAction(action) {
+            if (gameState.gameStatus !== 'combat' || !gameState.currentCombat || gameState.currentCombat.turn !== 'player') return;
+            gameState.currentCombat.turn = 'animation'; // Lock input
+            
+            const player = gameState.player;
+            const monster = gameState.currentCombat.monster;
+            const playerSprite = document.getElementById('player-sprite');
+            const monsterSprite = document.getElementById('monster-sprite');
+            let endTurn = true;
+            
+            switch(action) {
+                case 'attack':
+                    const isCrit = Math.random() < player.critChance;
+                    await animateLunge(playerSprite, monsterSprite, isCrit);
+                    const damageMultiplier = isCrit ? 1.5 : 1;
+                    if (isCrit) logBattleMessage("Critical Hit!", 'system');
+                    const playerDamage = Math.max(1, Math.floor((player.attack * damageMultiplier) - monster.defense));
+                    monster.hp -= playerDamage;
+                    logBattleMessage(`You hit ${monster.name} for ${playerDamage} damage.`, 'combat');
+                    break;
+                case 'skill':
+                    const skill = CLASSES[player.class].skill;
+                    if (player.mp >= skill.cost) {
+                        player.mp -= skill.cost;
+                        await animateSkill(playerSprite, monsterSprite, skill.anim);
+                        if (skill.effect === 'damage') {
+                            let skillDamage = Math.floor(Math.max(1, player.attack * skill.multiplier - monster.defense));
+                            monster.hp -= skillDamage;
+                            logBattleMessage(`You use ${skill.name} for ${skillDamage} damage!`, 'system');
+                        } else if (skill.effect === 'damage_stun') {
+                            const damage = Math.max(1, Math.floor(player.attack * skill.multiplier - monster.defense));
+                            monster.hp -= damage;
+                            monster.stunned = true;
+                            logBattleMessage(`You use ${skill.name} for ${damage} damage, stunning the ${monster.name}!`, 'system');
+                        }
+                    } else {
+                        showCombatMessage("Not enough MP!");
+                        endTurn = false;
+                    }
+                    break;
+                case 'potion':
+                    if (player.potions > 0) {
+                        const healAmount = Math.floor(player.maxHp * 0.5);
+                        player.hp = Math.min(player.maxHp, player.hp + healAmount);
+                        player.potions--;
+                        logBattleMessage(`You used a HP Potion, restoring ${healAmount} HP.`, 'item');
+                    } else {
+                        showCombatMessage("No HP Potions!");
+                        endTurn = false;
+                    }
+                    break;
+                case 'mp-potion':
+                     if (player.mpPotions > 0) {
+                        player.mp = player.maxMp;
+                        player.mpPotions--;
+                        logBattleMessage(`You used an MP Potion, restoring all MP.`, 'item');
+                    } else {
+                        showCombatMessage("No MP Potions!");
+                        endTurn = false;
+                    }
+                    break;
+                case 'flee':
+                    if (Math.random() < 0.5) {
+                        logBattleMessage(`You successfully fled!`, 'system');
+                        endCombat();
+                        return;
+                    } else {
+                        logBattleMessage(`You failed to flee!`, 'danger');
+                        showCombatMessage("Failed to flee!");
+                    }
+                    break;
+            }
+            
+            updateCombatUI();
+            if (monster.hp <= 0) { winCombat(); return; }
+            if (endTurn) {
+                await sleep(500);
+                monsterTurn();
+            } else {
+                gameState.currentCombat.turn = 'player'; // Unlock input
+            }
+        }
+        
+        async function monsterTurn() {
+            if (gameState.gameStatus !== 'combat' || !gameState.currentCombat) return;
+            const player = gameState.player;
+            const monster = gameState.currentCombat.monster;
+            const playerSprite = document.getElementById('player-sprite');
+            const monsterSprite = document.getElementById('monster-sprite');
+
+            if (monster.stunned) {
+                logBattleMessage(`${monster.name} is stunned and cannot move!`, 'system');
+                delete monster.stunned;
+                gameState.currentCombat.turn = 'player';
+                return;
+            }
+
+            const useSkill = monster.skills ? monster.skills[Math.floor(Math.random() * monster.skills.length)] : monster.skill;
+            if (useSkill && monster.mp >= useSkill.cost && Math.random() < 0.5) {
+                monster.mp -= useSkill.cost;
+                await animateSkill(monsterSprite, playerSprite, useSkill.anim || 'lunge');
+                if (useSkill.effect === 'damage') {
+                    const skillDamage = Math.floor(Math.max(1, monster.attack * useSkill.multiplier));
+                    player.hp -= skillDamage;
+                    logBattleMessage(`${monster.name} uses ${useSkill.name} for ${skillDamage} damage!`, 'danger');
+                } else if(useSkill.effect === 'true_damage') {
+                    const trueDamage = Math.floor(monster.attack * useSkill.multiplier);
+                    player.hp -= trueDamage;
+                    logBattleMessage(`${monster.name} uses ${useSkill.name}, ignoring your defense for ${trueDamage} damage!`, 'danger');
+                } else if (useSkill.effect === 'stun') {
+                    player.statusEffects.push({type: 'stun', duration: 1});
+                    logBattleMessage(`${monster.name} uses ${useSkill.name} and stuns you!`, 'danger');
+                }
+            } else {
+                const isCrit = Math.random() < monster.critChance;
+                await animateLunge(monsterSprite, playerSprite, isCrit);
+                const damageMultiplier = isCrit ? 1.5 : 1;
+                if (isCrit) logBattleMessage(`${monster.name} lands a Critical Hit!`, 'danger');
+                const monsterDamage = Math.max(1, Math.floor((monster.attack * damageMultiplier) - player.defense));
+                player.hp -= monsterDamage;
+                logBattleMessage(`${monster.name} hits you for ${monsterDamage} damage.`, 'danger');
+            }
+            
+            updateCombatUI();
+            if (player.hp <= 0) { player.hp = 0; endCombat(); loseGame(); return; }
+            gameState.currentCombat.turn = 'player';
+        }
+
+        async function animateLunge(attackerSprite, targetSprite, isCrit = false) {
+            const originalTransform = attackerSprite.style.transform;
+            attackerSprite.style.transition = 'transform 0.1s ease-out';
+            const direction = attackerSprite.id === 'player-sprite' ? 1 : -1;
+            attackerSprite.style.transform = `translateX(${50 * direction}px) translateY(-20px)`;
+            await sleep(100);
+            targetSprite.classList.add('flash-red');
+            combatModalContent.classList.add(isCrit ? 'crit-shake' : 'shake-animation');
+            await sleep(200);
+            attackerSprite.style.transform = originalTransform;
+            targetSprite.classList.remove('flash-red');
+            combatModalContent.classList.remove(isCrit ? 'crit-shake' : 'shake-animation');
+            await sleep(100);
+        }
+
+        async function animateSkill(casterSprite, targetSprite, animType) {
+            const animLayer = document.getElementById('animation-layer');
+            const targetRect = targetSprite.getBoundingClientRect();
+            const casterRect = casterSprite.getBoundingClientRect();
+            const containerRect = animLayer.getBoundingClientRect();
+
+            const targetX = targetRect.left - containerRect.left + targetRect.width / 2;
+            const targetY = targetRect.top - containerRect.top + targetRect.height / 2;
+
+            if (animType === 'fireball') {
+                const fireball = document.createElement('div');
+                fireball.className = 'skill-animation fireball';
+                const startX = casterRect.left - containerRect.left + casterRect.width / 2;
+                const startY = casterRect.top - containerRect.top + casterRect.height / 2;
+                fireball.style.left = `${startX - 15}px`;
+                fireball.style.top = `${startY - 15}px`;
+                animLayer.appendChild(fireball);
+                await sleep(10);
+                fireball.style.transition = 'transform 0.5s linear';
+                fireball.style.transform = `translate(${targetX - startX}px, ${targetY - startY}px)`;
+                await sleep(500);
+                fireball.remove();
+                const explosion = document.createElement('div');
+                explosion.className = 'skill-animation explosion';
+                explosion.style.left = `${targetX - 40}px`;
+                explosion.style.top = `${targetY - 40}px`;
+                animLayer.appendChild(explosion);
+                combatModalContent.classList.add('shake-animation');
+                await sleep(300);
+                explosion.remove();
+                combatModalContent.classList.remove('shake-animation');
+            } else if (animType === 'heal') {
+                const heal = document.createElement('div');
+                heal.textContent = '✚';
+                heal.className = 'skill-animation heal-effect';
+                heal.style.left = `${targetX - 10}px`;
+                heal.style.top = `${targetY}px`;
+                animLayer.appendChild(heal);
+                await sleep(1000);
+                heal.remove();
+            } else if (animType === 'x-cut') {
+                const cut = document.createElement('div');
+                cut.className = 'skill-animation x-cut';
+                cut.style.left = `${targetX - 30}px`;
+                cut.style.top = `${targetY - 30}px`;
+                animLayer.appendChild(cut);
+                targetSprite.classList.add('flash-red');
+                await sleep(400);
+                cut.remove();
+                targetSprite.classList.remove('flash-red');
+            } else if (animType === 'stun') {
+                await animateLunge(casterSprite, targetSprite);
+                const stun = document.createElement('div');
+                stun.textContent = '💫';
+                stun.className = 'skill-animation stun-effect';
+                stun.style.left = `${targetX - 10}px`;
+                stun.style.top = `${targetY - 50}px`;
+                animLayer.appendChild(stun);
+                await sleep(1000);
+                stun.remove();
+            } else { 
+                await animateLunge(casterSprite, targetSprite);
+            }
+        }
+        
+        function showCombatMessage(msg) {
+            const animLayer = document.getElementById('animation-layer');
+            const messageEl = document.createElement('div');
+            messageEl.textContent = msg;
+            messageEl.className = 'combat-message';
+            animLayer.appendChild(messageEl);
+            setTimeout(() => messageEl.remove(), 2000);
+        }
+
+        function endCombat() {
+            gameState.gameStatus = 'exploring';
+            gameState.currentCombat = null;
+            document.getElementById('combat-modal').style.display = 'none';
+            renderBoard();
+            updateUI();
+        }
+        
+        function winCombat() {
+            const monster = gameState.currentCombat.monster;
+            logMessage(`You defeated the ${monster.name}!`, 'system');
+            gameState.player.xp += monster.xp;
+            gameState.player.gold += monster.gold;
+            logBattleMessage(`Gained ${monster.xp} XP and ${monster.gold} gold.`, 'item');
+            const monsterIndex = gameState.entities.findIndex(e => e === monster);
+            if (monsterIndex > -1) gameState.entities.splice(monsterIndex, 1);
+            if(monster.type === EMOJI.BOSS) { winGame(); } else { checkLevelUp(); endCombat(); }
+        }
+
+        async function checkLevelUp() {
+            const p = gameState.player;
+            if (p.xp < p.xpToNextLevel) return;
+            
+            const oldStats = {...p};
+
+            while (p.xp >= p.xpToNextLevel) {
+                p.level++;
+                p.xp -= p.xpToNextLevel;
+                p.xpToNextLevel = Math.floor(p.xpToNextLevel * 1.6);
+                const c = CLASSES[p.class];
+                p.maxHp += Math.floor(c.hp * 0.2);
+                p.maxMp += Math.floor(c.mp * 0.25);
+                p.attack++;
+                p.defense++;
+                p.hp = p.maxHp; p.mp = p.maxMp;
+            }
+            logMessage(`LEVEL UP! You are now level ${p.level}!`, 'system');
+            showLevelUpModal(oldStats, p);
+            updateUI();
+        }
+        
+        function showLevelUpModal(oldStats, newStats) {
+            const statsList = document.getElementById('level-up-stats');
+            statsList.innerHTML = `
+                <li>Level: ${oldStats.level} → ${newStats.level}</li>
+                <li>Max HP: ${oldStats.maxHp} → ${newStats.maxHp}</li>
+                <li>Max MP: ${oldStats.maxMp} → ${newStats.maxMp}</li>
+                <li>Attack: ${oldStats.attack} → ${newStats.attack}</li>
+                <li>Defense: ${oldStats.defense} → ${newStats.defense}</li>
+            `;
+            levelUpModal.style.display = 'flex';
+        }
+
+        function nextLevel() {
+            if (gameState.dungeonLevel < MAX_DUNGEON_LEVEL) {
+                gameState.dungeonLevel++;
+                logMessage(`You descend to dungeon level ${gameState.dungeonLevel}...`, 'system');
+                generateLevel();
+            }
+        }
+        
+        function loseGame() {
+            gameState.gameStatus = 'town';
+            permanentUpgrades.gold += Math.floor(gameState.player.gold / 2);
+            document.getElementById('town-title').textContent = "Game Over";
+            document.getElementById('town-text').textContent = `Defeated on dungeon level ${gameState.dungeonLevel}.`;
+            showTown();
+        }
+        
+        function winGame() {
+            gameState.gameStatus = 'victory';
+            showVictoryScreen();
+        }
+        
+        function showTown() {
+            document.getElementById('town-gold').textContent = permanentUpgrades.gold;
+            document.getElementById('town-upgrades').innerHTML = `
+                <button class="upgrade-btn" onclick="buyUpgrade('hp', 10, 25)">+10 Max HP (Cost: 25 Gold)</button>
+                <button class="upgrade-btn" onclick="buyUpgrade('attack', 1, 40)">+1 Attack (Cost: 40 Gold)</button>
+                <button class="upgrade-btn" onclick="buyUpgrade('defense', 1, 50)">+1 Defense (Cost: 50 Gold)</button>
+            `;
+            townModal.style.display = 'flex';
+        }
+        
+        function showVictoryScreen() {
+            victoryModal.style.display = 'flex';
+            const container = document.getElementById('fireworks-container');
+            container.innerHTML = '';
+            for (let i = 0; i < 15; i++) {
+                createFirework(container);
+            }
+        }
+
+        function createFirework(container) {
+            const firework = document.createElement('div');
+            firework.className = 'firework';
+            firework.style.left = `${Math.random() * 100}%`;
+            firework.style.bottom = '0';
+            firework.style.background = `hsl(${Math.random() * 360}, 100%, 50%)`;
+            container.appendChild(firework);
+
+            setTimeout(() => {
+                firework.remove();
+                const x = firework.offsetLeft;
+                const y = firework.offsetTop;
+                for (let i = 0; i < 30; i++) {
+                    createExplosionParticle(container, x, y);
+                }
+            }, 1000);
+        }
+
+        function createExplosionParticle(container, x, y) {
+            const particle = document.createElement('div');
+            particle.className = 'explosion-particle';
+            particle.style.left = `${x}px`;
+            particle.style.top = `${y}px`;
+            particle.style.background = `hsl(${Math.random() * 360}, 100%, 50%)`;
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 100 + 50;
+            particle.style.transform = `translate(${Math.cos(angle) * speed}px, ${Math.sin(angle) * speed}px)`;
+            container.appendChild(particle);
+            setTimeout(() => particle.remove(), 800);
+        }
+
+        function buyUpgrade(stat, amount, cost) {
+            if (permanentUpgrades.gold >= cost) {
+                permanentUpgrades.gold -= cost;
+                permanentUpgrades[stat] += amount;
+                logMessage(`Permanently upgraded ${stat}!`, 'system');
+                document.getElementById('town-gold').textContent = permanentUpgrades.gold;
+            } else {
+                logMessage('Not enough gold!', 'danger');
+            }
+        }
+        
+        function openShop() {
+            const shopItems = document.getElementById('shop-items');
+            shopItems.innerHTML = `
+                <button onclick="buyFromShop('hp')">Buy HP Potion (15 Gold)</button>
+                <button onclick="buyFromShop('mp')">Buy MP Potion (20 Gold)</button>
+            `;
+            shopModal.style.display = 'flex';
+        }
+
+        function buyFromShop(item) {
+            const p = gameState.player;
+            if (item === 'hp') {
+                if (p.gold >= 15) {
+                    p.gold -= 15;
+                    p.potions++;
+                    logMessage('You bought an HP Potion.', 'item');
+                    showFloatingText('+1 🧪', document.getElementById('shop-items'));
+                } else {
+                    logMessage('Not enough gold!', 'danger');
+                }
+            } else if (item === 'mp') {
+                if (p.gold >= 20) {
+                    p.gold -= 20;
+                    p.mpPotions++;
+                    logMessage('You bought an MP Potion.', 'item');
+                    showFloatingText('+1 💧', document.getElementById('shop-items'));
+                } else {
+                    logMessage('Not enough gold!', 'danger');
+                }
+            }
+            updateUI();
+        }
+        
+        function showFloatingText(text, parentElement) {
+            const textEl = document.createElement('div');
+            textEl.className = 'floating-text';
+            textEl.textContent = text;
+            parentElement.appendChild(textEl);
+            setTimeout(() => textEl.remove(), 1500);
+        }
+        
+        function useHpPotion() {
+            if (gameState.player.potions > 0) {
+                if (gameState.player.hp < gameState.player.maxHp) {
+                    gameState.player.potions--;
+                    gameState.player.hp = Math.min(gameState.player.maxHp, gameState.player.hp + Math.floor(gameState.player.maxHp * 0.5));
+                    logMessage('You used an HP Potion.', 'item');
+                    updateUI();
+                } else {
+                    logMessage('Your HP is already full.', 'system');
+                }
+            } else {
+                logMessage('No HP Potions!', 'danger');
+            }
+        }
+
+        function useMpPotion() {
+            if (gameState.player.mpPotions > 0) {
+                if (gameState.player.mp < gameState.player.maxMp) {
+                    gameState.player.mpPotions--;
+                    gameState.player.mp = gameState.player.maxMp;
+                    logMessage('You used an MP Potion.', 'item');
+                    updateUI();
+                } else {
+                    logMessage('Your MP is already full.', 'system');
+                }
+            } else {
+                logMessage('No MP Potions!', 'danger');
+            }
+        }
+
+        // --- EVENT LISTENERS ---
+        window.addEventListener('keydown', (e) => {
+            if (gameState.gameStatus === 'exploring') {
+                 switch (e.key.toLowerCase()) {
+                    case 'arrowup': case 'w': playerTurn(0, -1); break;
+                    case 'arrowdown': case 's': playerTurn(0, 1); break;
+                    case 'arrowleft': case 'a': playerTurn(-1, 0); break;
+                    case 'arrowright': case 'd': playerTurn(1, 0); break;
+                    case 'h': useHpPotion(); break;
+                    case 'm': useMpPotion(); break;
+                }
+            }
+        });
+        
+        document.getElementById('combat-attack').onclick = () => handleCombatAction('attack');
+        document.getElementById('combat-skill').onclick = () => handleCombatAction('skill');
+        document.getElementById('combat-potion').onclick = () => handleCombatAction('potion');
+        document.getElementById('combat-mp-potion').onclick = () => handleCombatAction('mp-potion');
+        document.getElementById('combat-flee').onclick = () => handleCombatAction('flee');
+        
+        document.getElementById('town-restart-button').onclick = () => {
+            townModal.style.display = 'none';
+            initGame();
+        };
+        
+        document.getElementById('restart-button').onclick = () => {
+            document.getElementById('confirm-text').textContent = "This will end your current run. Are you sure?";
+            document.getElementById('confirm-yes-button').onclick = () => {
+                confirmModal.style.display = 'none';
+                initGame();
+            };
+            confirmModal.style.display = 'flex';
+        };
+        
+        document.getElementById('confirm-no-button').onclick = () => {
+            confirmModal.style.display = 'none';
+        };
+
+        document.getElementById('shop-close-button').onclick = () => {
+            shopModal.style.display = 'none';
+        };
+        
+        document.getElementById('victory-return-btn').onclick = () => {
+            victoryModal.style.display = 'none';
+            initGame();
+        };
+        
+        document.getElementById('level-up-ok-btn').onclick = () => {
+            levelUpModal.style.display = 'none';
+        };
+        
+        document.getElementById('use-hp-potion-btn').onclick = useHpPotion;
+        document.getElementById('use-mp-potion-btn').onclick = useMpPotion;
+        
+        document.getElementById('d-pad-up').addEventListener('click', () => playerTurn(0, -1));
+        document.getElementById('d-pad-down').addEventListener('click', () => playerTurn(0, 1));
+        document.getElementById('d-pad-left').addEventListener('click', () => playerTurn(-1, 0));
+        document.getElementById('d-pad-right').addEventListener('click', () => playerTurn(1, 0));
+
+        // --- GAME START ---
+        initGame();
+    </script>
+</body>
+</html>
