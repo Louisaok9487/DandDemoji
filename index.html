@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
     <style>
         :root {
             --tile-size: 32px;
@@ -219,7 +220,8 @@
         
         #town-modal .upgrade-btn { display: block; width: 100%; margin: 10px 0; text-align: left; padding: 15px; }
         
-        #restart-button { background-color: var(--danger-color); color: white; border: none; padding: 5px 10px; cursor: pointer; font-size: 12px; margin-left: 10px; font-family: 'Roboto Mono', monospace; border-radius: 4px; }
+        #restart-button, #sound-toggle-btn { background-color: var(--danger-color); color: white; border: none; padding: 5px 10px; cursor: pointer; font-size: 12px; margin-left: 10px; font-family: 'Roboto Mono', monospace; border-radius: 4px; }
+        #sound-toggle-btn { background-color: var(--mp-color); }
 
         #d-pad { display: none; position: fixed; bottom: 20px; left: 20px; width: 120px; height: 120px; z-index: 101; }
         #d-pad button { position: absolute; width: 40px; height: 40px; background: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.5); color: white; font-size: 20px; border-radius: 8px; }
@@ -263,7 +265,7 @@
             </div>
             <div id="inventory">
                 <div>Atk:<span id="attack">0</span> | Def:<span id="defense">0</span></div>
-                <div>Gold:<span id="gold">0</span><button id="restart-button">Restart</button></div>
+                <div>Gold:<span id="gold">0</span><button id="restart-button">Restart</button><button id="sound-toggle-btn">Mute 🔇</button></div>
                 <div>
                     <button id="use-hp-potion-btn" style="padding: 2px 5px; font-size: 10px;"></button>
                     <button id="use-mp-potion-btn" style="padding: 2px 5px; font-size: 10px;"></button>
@@ -400,6 +402,53 @@
         // --- GAME STATE ---
         let gameState = {};
         let permanentUpgrades = { hp: 0, attack: 0, defense: 0, gold: 0 };
+        let isMuted = true; // Start muted until user interacts
+        let audioStarted = false;
+
+        // --- SOUND MANAGER ---
+        const soundManager = {
+            synths: {},
+            bgm: null,
+            init() {
+                this.synths.attack = new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.1 } }).toDestination();
+                this.synths.crit = new Tone.Synth({ oscillator: { type: 'sawtooth' }, envelope: { attack: 0.01, decay: 0.2, sustain: 0, release: 0.2 }, volume: -5 }).toDestination();
+                this.synths.magic = new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'sine' }, envelope: { attack: 0.05, decay: 0.2, sustain: 0.2, release: 0.5 } }).toDestination();
+                this.synths.item = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.2, release: 0.2 } }).toDestination();
+                this.synths.levelUp = new Tone.PolySynth(Tone.Synth).toDestination();
+                this.synths.hit = new Tone.MembraneSynth({ pitchDecay: 0.01, octaves: 2, envelope: { attack: 0.001, decay: 0.2, sustain: 0 } }).toDestination();
+                
+                // Energetic BGM
+                this.bgm = new Tone.Sequence((time, note) => {
+                    this.synths.attack.triggerAttackRelease(note, '16n', time);
+                }, ['C2', ['E2', 'G2'], 'C2', ['F2', 'A2']], '8n').start(0);
+                Tone.Transport.bpm.value = 140;
+                Tone.getDestination().volume.value = -8; // BGM volume increased
+            },
+            play(sound, note = 'C4', duration = '8n') {
+                if (isMuted || !audioStarted) return;
+                if (this.synths[sound]) {
+                    this.synths[sound].triggerAttackRelease(note, duration);
+                }
+            },
+            playChord(sound, notes, duration = '4n') {
+                if (isMuted || !audioStarted) return;
+                if (this.synths[sound]) {
+                    this.synths[sound].triggerAttackRelease(notes, duration);
+                }
+            },
+            toggleMusic() {
+                if (!audioStarted) {
+                    Tone.start();
+                    audioStarted = true;
+                    isMuted = false; // Unmute on first click
+                } else {
+                    isMuted = !isMuted;
+                }
+                document.getElementById('sound-toggle-btn').textContent = isMuted ? 'Unmute 🔊' : 'Mute 🔇';
+                Tone.getDestination().mute = isMuted;
+            }
+        };
+        soundManager.init();
         
         // --- INITIALIZATION ---
         function initGame() {
@@ -423,6 +472,9 @@
 
         function startGame(playerClass) {
             classSelectionModal.style.display = 'none';
+            if (!audioStarted) {
+                soundManager.toggleMusic(); // Start audio on first interaction
+            }
             const classData = CLASSES[playerClass];
             gameState = {
                 gameStatus: 'exploring',
@@ -635,7 +687,6 @@
             }
 
             if (Math.random() < 0.3) placeEntity({ type: EMOJI.SHOP });
-            if (Math.random() < 0.2) placeEntity({ type: EMOJI.NPC });
             renderBoard();
         }
 
@@ -822,13 +873,14 @@
             switch (item.type) {
                 case EMOJI.DOOR: nextLevel(); return;
                 case EMOJI.SHOP: openShop(); return;
-                case EMOJI.GOLD: p.gold += item.value; logMessage(`You found ${item.value} gold!`, 'item'); break;
-                case EMOJI.WEAPON: p.attack += item.value; logMessage(`Found a weapon! Atk +${item.value}.`, 'item'); break;
-                case EMOJI.ARMOR: p.defense += item.value; logMessage(`Found armor! Def +${item.value}.`, 'item'); break;
-                case EMOJI.POTION: p.potions++; logMessage(`Picked up a HP Potion.`, 'item'); break;
-                case EMOJI.MP_POTION: p.mpPotions++; logMessage(`Picked up an MP Potion.`, 'item'); break;
+                case EMOJI.GOLD: p.gold += item.value; logMessage(`You found ${item.value} gold!`, 'item'); soundManager.play('item', 'C5'); break;
+                case EMOJI.WEAPON: p.attack += item.value; logMessage(`Found a weapon! Atk +${item.value}.`, 'item'); soundManager.play('item', 'C5'); break;
+                case EMOJI.ARMOR: p.defense += item.value; logMessage(`Found armor! Def +${item.value}.`, 'item'); soundManager.play('item', 'C5'); break;
+                case EMOJI.POTION: p.potions++; logMessage(`Picked up a HP Potion.`, 'item'); soundManager.play('item', 'C5'); break;
+                case EMOJI.MP_POTION: p.mpPotions++; logMessage(`Picked up an MP Potion.`, 'item'); soundManager.play('item', 'C5'); break;
                 case EMOJI.SCROLL:
                     logMessage('The scroll erupts in arcane energy!', 'system');
+                    soundManager.playChord('magic', ['C4', 'E4', 'G4']);
                     gameState.entities.filter(e => MONSTERS[e.type]).forEach(monster => {
                         const damage = 10;
                         monster.hp = Math.max(1, monster.hp - damage);
@@ -836,14 +888,8 @@
                     });
                     renderBoard();
                     break;
-                case EMOJI.NPC: 
-                    logMessage(`An old man gives you a potion and vanishes.`, 'system'); 
-                    p.potions++; 
-                    break;
             }
-            if (item.type !== EMOJI.NPC) {
-                gameState.entities.splice(index, 1);
-            }
+            gameState.entities.splice(index, 1);
             updateUI();
         }
         
@@ -901,7 +947,12 @@
                     const isCrit = Math.random() < player.critChance;
                     await animateLunge(playerSprite, monsterSprite, isCrit);
                     const damageMultiplier = isCrit ? 1.5 : 1;
-                    if (isCrit) logBattleMessage("Critical Hit!", 'system');
+                    if (isCrit) {
+                        logBattleMessage("Critical Hit!", 'system');
+                        soundManager.play('crit', 'C5');
+                    } else {
+                        soundManager.play('attack', 'C3');
+                    }
                     const playerDamage = Math.max(1, Math.floor((player.attack * damageMultiplier) - monster.defense));
                     monster.hp -= playerDamage;
                     logBattleMessage(`You hit ${monster.name} for ${playerDamage} damage.`, 'combat');
@@ -932,6 +983,7 @@
                         player.hp = Math.min(player.maxHp, player.hp + healAmount);
                         player.potions--;
                         logBattleMessage(`You used a HP Potion, restoring ${healAmount} HP.`, 'item');
+                        soundManager.play('item', 'A5');
                     } else {
                         showCombatMessage("No HP Potions!");
                         endTurn = false;
@@ -942,6 +994,7 @@
                         player.mp = player.maxMp;
                         player.mpPotions--;
                         logBattleMessage(`You used an MP Potion, restoring all MP.`, 'item');
+                        soundManager.play('item', 'B5');
                     } else {
                         showCombatMessage("No MP Potions!");
                         endTurn = false;
@@ -1022,6 +1075,7 @@
             await sleep(100);
             targetSprite.classList.add('flash-red');
             combatModalContent.classList.add(isCrit ? 'crit-shake' : 'shake-animation');
+            soundManager.play('hit', 'C2');
             await sleep(200);
             attackerSprite.style.transform = originalTransform;
             targetSprite.classList.remove('flash-red');
@@ -1037,6 +1091,7 @@
 
             const targetX = targetRect.left - containerRect.left + targetRect.width / 2;
             const targetY = targetRect.top - containerRect.top + targetRect.height / 2;
+            soundManager.playChord('magic', ['C4', 'E4', 'G4']);
 
             if (animType === 'fireball') {
                 const fireball = document.createElement('div');
@@ -1057,6 +1112,7 @@
                 explosion.style.top = `${targetY - 40}px`;
                 animLayer.appendChild(explosion);
                 combatModalContent.classList.add('shake-animation');
+                soundManager.play('crit', 'C3', '4n');
                 await sleep(300);
                 explosion.remove();
                 combatModalContent.classList.remove('shake-animation');
@@ -1140,6 +1196,7 @@
                 p.hp = p.maxHp; p.mp = p.maxMp;
             }
             logMessage(`LEVEL UP! You are now level ${p.level}!`, 'system');
+            soundManager.playChord('levelUp', ['C4', 'E4', 'G4', 'C5'], '2n');
             showLevelUpModal(oldStats, p);
             updateUI();
         }
@@ -1174,6 +1231,7 @@
         
         function winGame() {
             gameState.gameStatus = 'victory';
+            soundManager.playChord('levelUp', ['C5', 'E5', 'G5', 'C6'], '1n');
             showVictoryScreen();
         }
         
@@ -1255,6 +1313,7 @@
                     p.potions++;
                     logMessage('You bought an HP Potion.', 'item');
                     showFloatingText('+1 🧪', document.getElementById('shop-items'));
+                    soundManager.play('item', 'C5');
                 } else {
                     logMessage('Not enough gold!', 'danger');
                 }
@@ -1264,6 +1323,7 @@
                     p.mpPotions++;
                     logMessage('You bought an MP Potion.', 'item');
                     showFloatingText('+1 💧', document.getElementById('shop-items'));
+                    soundManager.play('item', 'E5');
                 } else {
                     logMessage('Not enough gold!', 'danger');
                 }
@@ -1285,6 +1345,7 @@
                     gameState.player.potions--;
                     gameState.player.hp = Math.min(gameState.player.maxHp, gameState.player.hp + Math.floor(gameState.player.maxHp * 0.5));
                     logMessage('You used an HP Potion.', 'item');
+                    soundManager.play('item', 'A5');
                     updateUI();
                 } else {
                     logMessage('Your HP is already full.', 'system');
@@ -1300,6 +1361,7 @@
                     gameState.player.mpPotions--;
                     gameState.player.mp = gameState.player.maxMp;
                     logMessage('You used an MP Potion.', 'item');
+                    soundManager.play('item', 'B5');
                     updateUI();
                 } else {
                     logMessage('Your MP is already full.', 'system');
@@ -1367,6 +1429,8 @@
         document.getElementById('d-pad-down').addEventListener('click', () => playerTurn(0, 1));
         document.getElementById('d-pad-left').addEventListener('click', () => playerTurn(-1, 0));
         document.getElementById('d-pad-right').addEventListener('click', () => playerTurn(1, 0));
+        
+        document.getElementById('sound-toggle-btn').addEventListener('click', soundManager.toggleMusic);
 
         // --- GAME START ---
         initGame();
